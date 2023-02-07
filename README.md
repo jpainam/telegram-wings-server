@@ -5,12 +5,6 @@
 http://nodejs.org/
 ```
 
-* Install MongoDb 
-```
-1. https://www.mongodb.com/try/download/community
-2. Install MongoDB as a service, a keep all field defaults
-3. Create the database telegram_wings
-```
 
 * Run
 ```

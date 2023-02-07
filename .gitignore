@@ -6,3 +6,4 @@ app.js
 Procfile
 mongo_data
 dist
+.env
