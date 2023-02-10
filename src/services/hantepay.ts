@@ -8,31 +8,40 @@ const crypto = require("crypto");
 const axios = require("axios");
 const nanoid = require("nanoid");
 
-const qrcode = (amount: number, orderNo: string) => {
+type PAYMENT_METHOD = "wechatpay" | "alipay";
+const CURRENCY = "USD";
+
+const qrcode = (
+  amount: number,
+  orderNo: string,
+  body: string,
+  payment_method: PAYMENT_METHOD
+) => {
   const nonce_str = crypto.randomUUID().replaceAll("-", "");
   const data = {
-    amount: amount,
-    body: "TestingQRCode",
-    currency: "USD",
     merchant_no: `${process.env.HANTEPAY_MERCHANT_NO}`,
-    nonce_str: nonce_str,
-    notify_url: `${process.env.BASE_URL}/hantepay/notify/${orderNo}`,
-    out_trade_no: orderNo,
-    payment_method: "wechatpay",
     store_no: `${process.env.HANTEPAY_STORE_NO}`,
+    nonce_str: nonce_str.substring(0, 6),
     time: Math.floor(Date.now() / 1000),
+    out_trade_no: orderNo,
+    amount: amount,
+    currency: CURRENCY,
+    payment_method: `${payment_method}`,
+    notify_url: `${process.env.BASE_URL}/hantepay/notify/${orderNo}`,
+    body: body,
   };
   let signature = "";
   for (const key of Object.keys(data).sort()) {
     signature += `${key}=${data[key]}&`;
   }
   signature += `${process.env.HANTEPAY_API_KEY}`;
+  console.log(signature)
   data["signature"] = md5(signature);
-  data["sign_type"] = "MD5";
+  //data["sign_type"] = "MD5";
   return data;
 };
 
-const qrpay = (amount: number, orderNo: string, payment_method: string) => {
+const qrpay = (amount: number, orderNo: string, body: string) => {
   const nonce_str = crypto.randomUUID().replaceAll("-", "");
   const data = {
     merchant_no: `${process.env.HANTEPAY_MERCHANT_NO}`,
@@ -41,10 +50,10 @@ const qrpay = (amount: number, orderNo: string, payment_method: string) => {
     time: Math.floor(Date.now() / 1000),
     out_trade_no: orderNo,
     amount: amount,
-    currency: "USD",
+    currency: CURRENCY,
     notify_url: `${process.env.BASE_URL}/hantepay/notify/${orderNo}`,
     callback_url: `${process.env.BASE_URL}/hantepay/callback/${orderNo}`,
-    body: "TestingQRCode",
+    body: body,
   };
   let signature = "";
   for (const key of Object.keys(data).sort()) {
@@ -57,13 +66,21 @@ const qrpay = (amount: number, orderNo: string, payment_method: string) => {
 };
 export const processPayment = async (
   amount: number,
-  payment_method: string
+  body: string,
+  payment_method: PAYMENT_METHOD,
+  payment_type: "qrcode" | "qrpay"
 ) => {
   try {
     const orderNo = nanoid(12); // e.g. "HjFTrrBybSco"
-    //const dataConfig = await qrcode(amount, orderNo);
-    const dataConfig = await qrpay(amount, orderNo, payment_method);
+    let dataConfig;
+    if (payment_type == "qrcode") {
+      dataConfig = qrcode(amount, orderNo, body, payment_method);
+    } else {
+      dataConfig = qrpay(amount, orderNo, body);
+    }
+    console.log(dataConfig);
     const data = JSON.stringify(dataConfig);
+    console.log(data);
     //const link2 = "https://gateway.hantepay.com/v2/gateway/qrcode";
     const link = "https://gateway.hantepay.com/v2/gateway/qrpay";
     const res = await axios.post(link, data, {
@@ -93,11 +110,19 @@ export const processPayment = async (
 
 export const makePayment = async (request: Request, response: Response) => {
   try {
-    const { amount, email, payment_method } = request.body;
-    const data = await processPayment(amount, payment_method);
+    const { amount, email, payment_method, body, payment_type } = request.body;
+    if(!amount || !email || !payment_method || !body || !payment_type){
+      return response.json({success: false, message: "Invalid params", data: {...request.body}});
+    }
+    const data = await processPayment(
+      amount,
+      body,
+      payment_method,
+      payment_type
+    );
     console.log(data);
     if (data.success) {
-      const res = await sendEmail(data.payUrl, email);
+      const res = sendEmail(data.payUrl, email);
       return response.json({ success: true, data: data });
     } else {
       return response
